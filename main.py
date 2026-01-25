@@ -1,27 +1,29 @@
-import telebot
+import telebot, os, psycopg2
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
-import sqlite3, os, time
 from datetime import datetime
 
 TOKEN = os.getenv("TOKEN")
+DATABASE_URL = os.getenv("DATABASE_URL")
+
 bot = telebot.TeleBot(TOKEN)
 
-# ===== BANCO =====
-conn = sqlite3.connect("/tmp/vip.db", check_same_thread=False)
+# ===== CONEXÃO =====
+conn = psycopg2.connect(DATABASE_URL)
 c = conn.cursor()
 
+# ===== TABELA =====
 c.execute("""
 CREATE TABLE IF NOT EXISTS resultados (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id SERIAL PRIMARY KEY,
     tipo TEXT,
-    data DATE DEFAULT (date('now'))
+    data TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 )
 """)
 conn.commit()
 
 # ===== SALVAR =====
 def salvar(tipo):
-    c.execute("INSERT INTO resultados (tipo) VALUES (?)", (tipo,))
+    c.execute("INSERT INTO resultados (tipo) VALUES (%s)", (tipo,))
     conn.commit()
 
 # ===== BOTÕES =====
@@ -52,7 +54,7 @@ def callback(call):
         salvar("refund")
         bot.answer_callback_query(call.id, "REEMBOLSO registrado ♻️")
 
-# ===== RELATÓRIO =====
+# ===== RELATÓRIO TOTAL =====
 def stats():
     c.execute("SELECT COUNT(*) FROM resultados WHERE tipo='green'")
     green = c.fetchone()[0]
@@ -60,43 +62,55 @@ def stats():
     red = c.fetchone()[0]
     c.execute("SELECT COUNT(*) FROM resultados WHERE tipo='refund'")
     refund = c.fetchone()[0]
+
     total = green + red
     winrate = (green / total * 100) if total > 0 else 0
-    lucro = green * 1 - red * 1  # ajuste stake
+    lucro = green - red
+
     return green, red, refund, winrate, lucro
 
 @bot.message_handler(commands=['relatorio'])
 def relatorio(msg):
     green, red, refund, winrate, lucro = stats()
     texto = f"""
-📊 RELATÓRIO VIP INSTITUCIONAL
+📊 RELATÓRIO HISTÓRICO VIP
 
-🟢 Green: {green}
-🔴 Red: {red}
+🟢 Green total: {green}
+🔴 Red total: {red}
 ♻️ Reembolso: {refund}
 
-📈 Winrate: {winrate:.2f}%
-💰 Lucro (unidades): {lucro}
+📈 Winrate geral: {winrate:.2f}%
+💰 Lucro total: {lucro} unidades
 """
     bot.send_message(msg.chat.id, texto)
 
-# ===== RESET DIÁRIO AUTOMÁTICO =====
-def reset_diario():
-    while True:
-        agora = datetime.now().strftime("%H:%M")
-        if agora == "00:00":
-            c.execute("DELETE FROM resultados")
-            conn.commit()
-            print("Reset diário feito")
-            time.sleep(60)
-        time.sleep(10)
+# ===== RELATÓRIO MENSAL =====
+@bot.message_handler(commands=['mensal'])
+def mensal(msg):
+    c.execute("""
+    SELECT 
+        SUM(CASE WHEN tipo='green' THEN 1 ELSE 0 END),
+        SUM(CASE WHEN tipo='red' THEN 1 ELSE 0 END)
+    FROM resultados 
+    WHERE date_trunc('month', data) = date_trunc('month', CURRENT_DATE)
+    """)
+    green, red = c.fetchone()
+    green = green or 0
+    red = red or 0
+    total = green + red
+    winrate = (green/total*100) if total>0 else 0
+
+    bot.send_message(msg.chat.id, f"""
+📆 RELATÓRIO MENSAL VIP
+
+🟢 Green: {green}
+🔴 Red: {red}
+📈 Winrate: {winrate:.2f}%
+""")
 
 # ===== START =====
 @bot.message_handler(commands=['start'])
 def start(msg):
-    bot.send_message(msg.chat.id, "🤖 VIP INSTITUCIONAL 2.0 ONLINE")
+    bot.send_message(msg.chat.id, "🤖 VIP INSTITUCIONAL HISTÓRICO ONLINE")
 
-# ===== LOOP =====
-import threading
-threading.Thread(target=reset_diario).start()
 bot.infinity_polling()

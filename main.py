@@ -4,7 +4,7 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from datetime import datetime
 
 # ===== COLOQUE SEU TOKEN AQUI =====
-TOKEN = "SEU_TOKEN_AQUI"
+TOKEN = "8351324083:AAG0O16bSbF3k-UsBNaPJlZqeOLvi6N8nyk"
 bot = telebot.TeleBot(TOKEN)
 
 # ===== BANCO HISTÓRICO =====

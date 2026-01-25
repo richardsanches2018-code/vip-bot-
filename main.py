@@ -7,7 +7,7 @@ TOKEN = os.getenv("TOKEN")
 bot = telebot.TeleBot(TOKEN)
 
 # ===== BANCO DE DADOS =====
-conn = sqlite3.connect("stats.db", check_same_thread=False)
+conn = sqlite3.connect("/tmp/stats.db", check_same_thread=False)
 c = conn.cursor()
 
 c.execute("""
@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS resultados (
 """)
 conn.commit()
 
-# ===== FUNÇÃO PRA SALVAR RESULTADO =====
+# ===== FUNÇÃO PRA SALVAR =====
 def salvar(tipo):
     c.execute("INSERT INTO resultados (tipo) VALUES (?)", (tipo,))
     conn.commit()
@@ -34,12 +34,12 @@ def teclado_resultado():
     )
     return kb
 
-# ===== COMANDO DE ENVIO DE SINAL =====
+# ===== ENVIAR SINAL =====
 @bot.message_handler(commands=['sinal'])
 def sinal(msg):
     bot.send_message(msg.chat.id, "📊 RESULTADO DA APOSTA:", reply_markup=teclado_resultado())
 
-# ===== CALLBACK DOS BOTÕES =====
+# ===== BOTÕES CALLBACK =====
 @bot.callback_query_handler(func=lambda call: True)
 def callback(call):
     if call.data == "green":
@@ -67,8 +67,7 @@ def relatorio(msg):
     total = green + red
     winrate = (green / total * 100) if total > 0 else 0
 
-    texto = f"""
-📊 RELATÓRIO VIP
+    texto = f"""📊 RELATÓRIO VIP
 
 🟢 Green: {green}
 🔴 Red: {red}
@@ -81,4 +80,6 @@ def relatorio(msg):
 # ===== START =====
 @bot.message_handler(commands=['start'])
 def start(msg):
-    bot.send_message(msg
+    bot.send_message(msg.chat.id, "🤖 Bot VIP Institucional Online")
+
+bot.infinity_polling()

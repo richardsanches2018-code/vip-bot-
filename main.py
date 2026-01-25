@@ -1,29 +1,29 @@
-import telebot, os, psycopg2
+import telebot
+import sqlite3
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from datetime import datetime
 
-TOKEN = os.getenv("TOKEN")
-DATABASE_URL = os.getenv("DATABASE_URL")
-
+# ===== COLOQUE SEU TOKEN AQUI =====
+TOKEN = "SEU_TOKEN_AQUI"
 bot = telebot.TeleBot(TOKEN)
 
-# ===== CONEXÃO =====
-conn = psycopg2.connect(DATABASE_URL)
+# ===== BANCO HISTÓRICO =====
+conn = sqlite3.connect("stats.db", check_same_thread=False)
 c = conn.cursor()
 
-# ===== TABELA =====
 c.execute("""
 CREATE TABLE IF NOT EXISTS resultados (
-    id SERIAL PRIMARY KEY,
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
     tipo TEXT,
-    data TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    data TEXT
 )
 """)
 conn.commit()
 
-# ===== SALVAR =====
+# ===== SALVAR RESULTADO =====
 def salvar(tipo):
-    c.execute("INSERT INTO resultados (tipo) VALUES (%s)", (tipo,))
+    data = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    c.execute("INSERT INTO resultados (tipo, data) VALUES (?, ?)", (tipo, data))
     conn.commit()
 
 # ===== BOTÕES =====
@@ -37,11 +37,11 @@ def teclado():
     return kb
 
 # ===== ENVIAR SINAL =====
-@bot.message_handler(commands=['sinal'])
+@bot.message_handler(commands=["sinal"])
 def sinal(msg):
     bot.send_message(msg.chat.id, "📊 RESULTADO DA OPERAÇÃO:", reply_markup=teclado())
 
-# ===== CALLBACK =====
+# ===== CLIQUE NOS BOTÕES =====
 @bot.callback_query_handler(func=lambda call: True)
 def callback(call):
     if call.data == "green":
@@ -55,11 +55,14 @@ def callback(call):
         bot.answer_callback_query(call.id, "REEMBOLSO registrado ♻️")
 
 # ===== RELATÓRIO TOTAL =====
-def stats():
+@bot.message_handler(commands=["relatorio"])
+def relatorio(msg):
     c.execute("SELECT COUNT(*) FROM resultados WHERE tipo='green'")
     green = c.fetchone()[0]
+
     c.execute("SELECT COUNT(*) FROM resultados WHERE tipo='red'")
     red = c.fetchone()[0]
+
     c.execute("SELECT COUNT(*) FROM resultados WHERE tipo='refund'")
     refund = c.fetchone()[0]
 
@@ -67,50 +70,22 @@ def stats():
     winrate = (green / total * 100) if total > 0 else 0
     lucro = green - red
 
-    return green, red, refund, winrate, lucro
-
-@bot.message_handler(commands=['relatorio'])
-def relatorio(msg):
-    green, red, refund, winrate, lucro = stats()
     texto = f"""
-📊 RELATÓRIO HISTÓRICO VIP
-
-🟢 Green total: {green}
-🔴 Red total: {red}
-♻️ Reembolso: {refund}
-
-📈 Winrate geral: {winrate:.2f}%
-💰 Lucro total: {lucro} unidades
-"""
-    bot.send_message(msg.chat.id, texto)
-
-# ===== RELATÓRIO MENSAL =====
-@bot.message_handler(commands=['mensal'])
-def mensal(msg):
-    c.execute("""
-    SELECT 
-        SUM(CASE WHEN tipo='green' THEN 1 ELSE 0 END),
-        SUM(CASE WHEN tipo='red' THEN 1 ELSE 0 END)
-    FROM resultados 
-    WHERE date_trunc('month', data) = date_trunc('month', CURRENT_DATE)
-    """)
-    green, red = c.fetchone()
-    green = green or 0
-    red = red or 0
-    total = green + red
-    winrate = (green/total*100) if total>0 else 0
-
-    bot.send_message(msg.chat.id, f"""
-📆 RELATÓRIO MENSAL VIP
+📊 RELATÓRIO VIP HISTÓRICO
 
 🟢 Green: {green}
 🔴 Red: {red}
+♻️ Reembolso: {refund}
+
 📈 Winrate: {winrate:.2f}%
-""")
+💰 Lucro: {lucro} unidades
+"""
+    bot.send_message(msg.chat.id, texto)
 
 # ===== START =====
-@bot.message_handler(commands=['start'])
+@bot.message_handler(commands=["start"])
 def start(msg):
-    bot.send_message(msg.chat.id, "🤖 VIP INSTITUCIONAL HISTÓRICO ONLINE")
+    bot.send_message(msg.chat.id, "🤖 BOT VIP INSTITUCIONAL ONLINE")
 
+# ===== RODAR =====
 bot.infinity_polling()

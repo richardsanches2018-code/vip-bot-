@@ -69,4 +69,34 @@ def stats():
 def relatorio(msg):
     green, red, refund, winrate, lucro = stats()
     texto = f"""
-📊
+📊 RELATÓRIO VIP INSTITUCIONAL
+
+🟢 Green: {green}
+🔴 Red: {red}
+♻️ Reembolso: {refund}
+
+📈 Winrate: {winrate:.2f}%
+💰 Lucro (unidades): {lucro}
+"""
+    bot.send_message(msg.chat.id, texto)
+
+# ===== RESET DIÁRIO AUTOMÁTICO =====
+def reset_diario():
+    while True:
+        agora = datetime.now().strftime("%H:%M")
+        if agora == "00:00":
+            c.execute("DELETE FROM resultados")
+            conn.commit()
+            print("Reset diário feito")
+            time.sleep(60)
+        time.sleep(10)
+
+# ===== START =====
+@bot.message_handler(commands=['start'])
+def start(msg):
+    bot.send_message(msg.chat.id, "🤖 VIP INSTITUCIONAL 2.0 ONLINE")
+
+# ===== LOOP =====
+import threading
+threading.Thread(target=reset_diario).start()
+bot.infinity_polling()

@@ -1,31 +1,31 @@
 import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
-import sqlite3
-import os
+import sqlite3, os, time
+from datetime import datetime
 
 TOKEN = os.getenv("TOKEN")
 bot = telebot.TeleBot(TOKEN)
 
-# ===== BANCO DE DADOS =====
-conn = sqlite3.connect("/tmp/stats.db", check_same_thread=False)
+# ===== BANCO =====
+conn = sqlite3.connect("/tmp/vip.db", check_same_thread=False)
 c = conn.cursor()
 
 c.execute("""
 CREATE TABLE IF NOT EXISTS resultados (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     tipo TEXT,
-    data TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    data DATE DEFAULT (date('now'))
 )
 """)
 conn.commit()
 
-# ===== FUNÇÃO PRA SALVAR =====
+# ===== SALVAR =====
 def salvar(tipo):
     c.execute("INSERT INTO resultados (tipo) VALUES (?)", (tipo,))
     conn.commit()
 
 # ===== BOTÕES =====
-def teclado_resultado():
+def teclado():
     kb = InlineKeyboardMarkup()
     kb.row(
         InlineKeyboardButton("🟢 GREEN", callback_data="green"),
@@ -37,9 +37,9 @@ def teclado_resultado():
 # ===== ENVIAR SINAL =====
 @bot.message_handler(commands=['sinal'])
 def sinal(msg):
-    bot.send_message(msg.chat.id, "📊 RESULTADO DA APOSTA:", reply_markup=teclado_resultado())
+    bot.send_message(msg.chat.id, "📊 RESULTADO DA OPERAÇÃO:", reply_markup=teclado())
 
-# ===== BOTÕES CALLBACK =====
+# ===== CALLBACK =====
 @bot.callback_query_handler(func=lambda call: True)
 def callback(call):
     if call.data == "green":
@@ -53,33 +53,20 @@ def callback(call):
         bot.answer_callback_query(call.id, "REEMBOLSO registrado ♻️")
 
 # ===== RELATÓRIO =====
-@bot.message_handler(commands=['relatorio'])
-def relatorio(msg):
+def stats():
     c.execute("SELECT COUNT(*) FROM resultados WHERE tipo='green'")
     green = c.fetchone()[0]
-
     c.execute("SELECT COUNT(*) FROM resultados WHERE tipo='red'")
     red = c.fetchone()[0]
-
     c.execute("SELECT COUNT(*) FROM resultados WHERE tipo='refund'")
     refund = c.fetchone()[0]
-
     total = green + red
     winrate = (green / total * 100) if total > 0 else 0
+    lucro = green * 1 - red * 1  # ajuste stake
+    return green, red, refund, winrate, lucro
 
-    texto = f"""📊 RELATÓRIO VIP
-
-🟢 Green: {green}
-🔴 Red: {red}
-♻️ Reembolso: {refund}
-
-🎯 Winrate: {winrate:.2f}%
-"""
-    bot.send_message(msg.chat.id, texto)
-
-# ===== START =====
-@bot.message_handler(commands=['start'])
-def start(msg):
-    bot.send_message(msg.chat.id, "🤖 Bot VIP Institucional Online")
-
-bot.infinity_polling()
+@bot.message_handler(commands=['relatorio'])
+def relatorio(msg):
+    green, red, refund, winrate, lucro = stats()
+    texto = f"""
+📊

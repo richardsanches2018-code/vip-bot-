@@ -4,14 +4,14 @@ import sqlite3
 from datetime import datetime
 import os
 
-# ===== TOKEN (FUNCIONA COM OU SEM RAILWAY VARIABLE) =====
-TOKEN = os.getenv("TOKEN")  # Railway
+# ===== TOKEN =====
+TOKEN = os.getenv("TOKEN")
 if TOKEN is None:
-    TOKEN = "8351324083:AAG0O16bSbF3k-UsBNaPJlZqeOLvi6N8nyk"  # Backup manual
+    TOKEN = "8351324083:AAG0O16bSbF3k-UsBNaPJlZqeOLvi6N8nyk"
 
 bot = telebot.TeleBot(TOKEN)
 
-# ===== BANCO SQLITE =====
+# ===== BANCO =====
 conn = sqlite3.connect("stats.db", check_same_thread=False)
 c = conn.cursor()
 
@@ -25,13 +25,13 @@ CREATE TABLE IF NOT EXISTS resultados (
 """)
 conn.commit()
 
-# ===== SALVAR RESULTADO =====
+# ===== SALVAR =====
 def salvar(tipo, msg_id):
     data = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     c.execute("INSERT INTO resultados (tipo, mensagem_id, data) VALUES (?, ?, ?)", (tipo, msg_id, data))
     conn.commit()
 
-# ===== BARRA GREEN / RED / REEMBOLSO =====
+# ===== BARRA INLINE =====
 def barra():
     kb = InlineKeyboardMarkup()
     kb.row(
@@ -41,19 +41,26 @@ def barra():
     )
     return kb
 
-# ===== PALAVRAS PARA DETECTAR APOSTA (NUNCA NONE) =====
+# ===== PALAVRAS QUE DETECTAM APOSTA =====
 PALAVRAS = ["over", "under", "gol", "escanteio", "canto", "ht", "ft", "odd"]
 
-# ===== DETECTAR APOSTA AUTOMÁTICO =====
+# ===== AUTO INSERIR BARRA NA MESMA MENSAGEM =====
 @bot.message_handler(func=lambda msg: msg.text and any(p in msg.text.lower() for p in PALAVRAS))
-def auto_aposta(msg):
-    # evita responder bot
+def auto_inline(msg):
+    # Evita editar mensagem de bot
     if msg.from_user.is_bot:
         return
     
-    bot.send_message(msg.chat.id, "👇 Marque o resultado:", reply_markup=barra())
+    try:
+        bot.edit_message_reply_markup(
+            chat_id=msg.chat.id,
+            message_id=msg.message_id,
+            reply_markup=barra()
+        )
+    except Exception as e:
+        print("Erro ao editar mensagem:", e)
 
-# ===== BOTÕES CALLBACK =====
+# ===== CLIQUE NOS BOTÕES =====
 @bot.callback_query_handler(func=lambda call: True)
 def callback(call):
     msg_id = call.message.message_id
@@ -61,17 +68,17 @@ def callback(call):
     if call.data == "green":
         salvar("green", msg_id)
         bot.answer_callback_query(call.id, "GREEN registrado 🟢")
-        bot.edit_message_text("🟢 RESULTADO: GREEN CONFIRMADO", call.message.chat.id, msg_id)
+        bot.edit_message_text(call.message.text + "\n\n🟢 RESULTADO: GREEN CONFIRMADO", call.message.chat.id, msg_id, reply_markup=barra())
 
     elif call.data == "red":
         salvar("red", msg_id)
         bot.answer_callback_query(call.id, "RED registrado 🔴")
-        bot.edit_message_text("🔴 RESULTADO: RED CONFIRMADO", call.message.chat.id, msg_id)
+        bot.edit_message_text(call.message.text + "\n\n🔴 RESULTADO: RED CONFIRMADO", call.message.chat.id, msg_id, reply_markup=barra())
 
     elif call.data == "refund":
         salvar("refund", msg_id)
         bot.answer_callback_query(call.id, "REEMBOLSO registrado ♻️")
-        bot.edit_message_text("♻️ RESULTADO: REEMBOLSO", call.message.chat.id, msg_id)
+        bot.edit_message_text(call.message.text + "\n\n♻️ RESULTADO: REEMBOLSO", call.message.chat.id, msg_id, reply_markup=barra())
 
 # ===== RELATÓRIO =====
 @bot.message_handler(commands=["relatorio"])
@@ -88,7 +95,7 @@ def relatorio(msg):
     total = green + red
     winrate = (green / total * 100) if total > 0 else 0
 
-    texto = f"""
+    bot.send_message(msg.chat.id, f"""
 📊 RELATÓRIO VIP
 
 🟢 Green: {green}
@@ -96,13 +103,11 @@ def relatorio(msg):
 ♻️ Reembolso: {refund}
 
 📈 Winrate: {winrate:.2f}%
-"""
-    bot.send_message(msg.chat.id, texto)
+""")
 
 # ===== START =====
 @bot.message_handler(commands=["start"])
 def start(msg):
-    bot.send_message(msg.chat.id, "🤖 BOT VIP AUTOMÁTICO ONLINE")
+    bot.send_message(msg.chat.id, "🤖 BOT VIP INLINE ATIVO")
 
-# ===== RODAR =====
 bot.infinity_polling()

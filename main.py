@@ -3,7 +3,7 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 import sqlite3, os
 from datetime import datetime
 
-TOKEN = os.getenv("TOKEN") or "8351324083:AAG0O16bSbF3k-UsBNaPJlZqeOLvi6N8nyk"
+TOKEN = os.getenv("TOKEN") or "COLE_SEU_TOKEN"
 bot = telebot.TeleBot(TOKEN)
 
 # ===== BANCO =====
@@ -30,18 +30,21 @@ def barra():
     )
     return kb
 
-# ===== DETECTAR APOSTA (AUTO FORWARDER) =====
-# ISSO AQUI FAZ APARECER EM TODA MENSAGEM
-@bot.message_handler(func=lambda msg: msg.text and len(msg.text) > 10)
-def auto_barra(msg):
+# ===== DETECTAR APOSTA BETBOTS =====
+@bot.message_handler(func=lambda msg: msg.text and (
+    "oportunidade" in msg.text.lower() or
+    "estratégia" in msg.text.lower() or
+    "bet365" in msg.text.lower()
+))
+def detectar_aposta(msg):
     try:
         bot.edit_message_reply_markup(
             msg.chat.id,
             msg.message_id,
             reply_markup=barra()
         )
-    except:
-        pass
+    except Exception as e:
+        print("Erro:", e)
 
 # ===== CLIQUES =====
 @bot.callback_query_handler(func=lambda call: True)
@@ -49,10 +52,10 @@ def clicar(call):
     msg_id = call.message.message_id
     data = datetime.now().strftime("%Y-%m-%d")
 
-    # evita duplicar
+    # evita marcar 2x
     c.execute("SELECT * FROM resultados WHERE msg_id=?", (msg_id,))
     if c.fetchone():
-        bot.answer_callback_query(call.id, "Já marcado ⚠️")
+        bot.answer_callback_query(call.id, "⚠️ Já marcado")
         return
 
     if call.data == "green":
@@ -65,19 +68,46 @@ def clicar(call):
     c.execute("INSERT INTO resultados (tipo,msg_id,data) VALUES (?,?,?)", (tipo,msg_id,data))
     conn.commit()
 
-    bot.answer_callback_query(call.id, f"{tipo.upper()} registrado")
+    bot.answer_callback_query(call.id, f"{tipo.upper()} SALVO")
 
 # ===== PAINEL VIP =====
 @bot.message_handler(commands=["start"])
 def painel(msg):
     bot.send_message(msg.chat.id, """
-🤖 VIP INSTITUCIONAL
+🤖 VIP INSTITUCIONAL 2026
 
 ⚽ GOLS HT / FT
-🚩 ESCANTEIOS HT / FT
+⛳ ESCANTEIOS HT / FT
 
-💰 VIP MENSAL: R$25
+💰 PLANO VIP
+Mensal: R$25
 Pix: SUA CHAVE PIX
+
+📊 Comandos:
+➡ /relatorio
+""")
+
+# ===== RELATÓRIO =====
+@bot.message_handler(commands=["relatorio"])
+def relatorio(msg):
+    c.execute("SELECT COUNT(*) FROM resultados WHERE tipo='green'")
+    green = c.fetchone()[0]
+    c.execute("SELECT COUNT(*) FROM resultados WHERE tipo='red'")
+    red = c.fetchone()[0]
+    c.execute("SELECT COUNT(*) FROM resultados WHERE tipo='refund'")
+    refund = c.fetchone()[0]
+
+    total = green + red
+    winrate = (green/total*100) if total > 0 else 0
+
+    bot.send_message(msg.chat.id, f"""
+📊 RELATÓRIO VIP
+
+🟢 Green: {green}
+🔴 Red: {red}
+♻️ Reembolso: {refund}
+
+📈 Winrate: {winrate:.2f}%
 """)
 
 bot.infinity_polling()

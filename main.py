@@ -3,7 +3,7 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 import sqlite3, os
 from datetime import datetime
 
-TOKEN = os.getenv("TOKEN") or "8351324083:AAG0O16bSbF3k-UsBNaPJlZqeOLvi6N8nyk"
+TOKEN = os.getenv("TOKEN") or "COLE_SEU_TOKEN_AQUI"
 bot = telebot.TeleBot(TOKEN)
 
 # ===== BANCO =====
@@ -30,29 +30,30 @@ def barra():
     )
     return kb
 
-# ===== DETECTAR APOSTA BETBOTS =====
+# ===== DETECTAR APOSTA (BETBOTS / FORWARDER) =====
 @bot.message_handler(func=lambda msg: msg.text and (
     "oportunidade" in msg.text.lower() or
     "estratégia" in msg.text.lower() or
-    "bet365" in msg.text.lower()
+    "bet365" in msg.text.lower() or
+    "liga" in msg.text.lower()
 ))
-def detectar_aposta(msg):
+def auto_barra(msg):
     try:
         bot.edit_message_reply_markup(
             msg.chat.id,
             msg.message_id,
             reply_markup=barra()
         )
-    except Exception as e:
-        print("Erro:", e)
+    except:
+        pass
 
-# ===== CLIQUES =====
+# ===== CLIQUE NOS BOTÕES =====
 @bot.callback_query_handler(func=lambda call: True)
 def clicar(call):
     msg_id = call.message.message_id
     data = datetime.now().strftime("%Y-%m-%d")
 
-    # evita marcar 2x
+    # evita marcar duas vezes
     c.execute("SELECT * FROM resultados WHERE msg_id=?", (msg_id,))
     if c.fetchone():
         bot.answer_callback_query(call.id, "⚠️ Já marcado")
@@ -68,23 +69,21 @@ def clicar(call):
     c.execute("INSERT INTO resultados (tipo,msg_id,data) VALUES (?,?,?)", (tipo,msg_id,data))
     conn.commit()
 
-    bot.answer_callback_query(call.id, f"{tipo.upper()} SALVO")
+    bot.answer_callback_query(call.id, f"{tipo.upper()} REGISTRADO")
 
 # ===== PAINEL VIP =====
 @bot.message_handler(commands=["start"])
 def painel(msg):
-    bot.send_message(msg.chat.id, """
-🤖 VIP INSTITUCIONAL 2026
+    bot.send_message(msg.chat.id, f"""
+🤖 VIP INSTITUCIONAL
 
 ⚽ GOLS HT / FT
 ⛳ ESCANTEIOS HT / FT
 
-💰 PLANO VIP
-Mensal: R$25
+💰 VIP MENSAL: R$25
 Pix: SUA CHAVE PIX
 
-📊 Comandos:
-➡ /relatorio
+📊 /relatorio
 """)
 
 # ===== RELATÓRIO =====
@@ -106,7 +105,6 @@ def relatorio(msg):
 🟢 Green: {green}
 🔴 Red: {red}
 ♻️ Reembolso: {refund}
-
 📈 Winrate: {winrate:.2f}%
 """)
 

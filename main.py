@@ -1,111 +1,89 @@
-import telebot
-from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
-import sqlite3, os
-from datetime import datetime
-
-TOKEN = os.getenv("TOKEN") or "COLE_SEU_TOKEN_AQUI"
-bot = telebot.TeleBot(TOKEN)
-
-# ===== BANCO =====
-conn = sqlite3.connect("vip.db", check_same_thread=False)
-c = conn.cursor()
-
-c.execute("""
-CREATE TABLE IF NOT EXISTS resultados (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    tipo TEXT,
-    msg_id INTEGER,
-    data TEXT
+import os
+from telegram import (
+    Update,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup
 )
-""")
-conn.commit()
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    CallbackQueryHandler,
+    ContextTypes
+)
 
-# ===== BOTÕES =====
-def barra():
-    kb = InlineKeyboardMarkup()
-    kb.row(
-        InlineKeyboardButton("🟢 GREEN", callback_data="green"),
-        InlineKeyboardButton("🔴 RED", callback_data="red"),
-        InlineKeyboardButton("♻️ REEMBOLSO", callback_data="refund")
+BOT_TOKEN = os.getenv("8351324083:AAG0O16bSbF3k-UsBNaPJlZqeOLvi6N8nyk")
+
+# Relatório em memória
+dados = {
+    "green": 0,
+    "red": 0,
+    "refund": 0
+}
+
+# /start
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "🤖 Bot online!\n\n"
+        "Use /aposta para registrar uma entrada\n"
+        "Use /relatorio para ver os resultados"
     )
-    return kb
 
-# ===== DETECTAR APOSTA (BETBOTS / FORWARDER) =====
-@bot.message_handler(func=lambda msg: msg.text and (
-    "oportunidade" in msg.text.lower() or
-    "estratégia" in msg.text.lower() or
-    "bet365" in msg.text.lower() or
-    "liga" in msg.text.lower()
-))
-def auto_barra(msg):
-    try:
-        bot.edit_message_reply_markup(
-            msg.chat.id,
-            msg.message_id,
-            reply_markup=barra()
-        )
-    except:
-        pass
+# /aposta
+async def aposta(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = [
+        [
+            InlineKeyboardButton("🟢 GREEN", callback_data="green"),
+            InlineKeyboardButton("🔴 RED", callback_data="red"),
+            InlineKeyboardButton("♻️ REEMBOLSO", callback_data="refund")
+        ]
+    ]
 
-# ===== CLIQUE NOS BOTÕES =====
-@bot.callback_query_handler(func=lambda call: True)
-def clicar(call):
-    msg_id = call.message.message_id
-    data = datetime.now().strftime("%Y-%m-%d")
+    await update.message.reply_text(
+        "📊 Entrada registrada\n\n"
+        "Selecione o resultado:",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
 
-    # evita marcar duas vezes
-    c.execute("SELECT * FROM resultados WHERE msg_id=?", (msg_id,))
-    if c.fetchone():
-        bot.answer_callback_query(call.id, "⚠️ Já marcado")
-        return
+# Clique nos botões
+async def resultado(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
 
-    if call.data == "green":
-        tipo = "green"
-    elif call.data == "red":
-        tipo = "red"
+    if query.data == "green":
+        dados["green"] += 1
+        texto = "🟢 GREEN confirmado!"
+    elif query.data == "red":
+        dados["red"] += 1
+        texto = "🔴 RED confirmado!"
     else:
-        tipo = "refund"
+        dados["refund"] += 1
+        texto = "♻️ Reembolso registrado!"
 
-    c.execute("INSERT INTO resultados (tipo,msg_id,data) VALUES (?,?,?)", (tipo,msg_id,data))
-    conn.commit()
+    await query.edit_message_text(texto)
 
-    bot.answer_callback_query(call.id, f"{tipo.upper()} REGISTRADO")
+# /relatorio
+async def relatorio(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    total = dados["green"] + dados["red"] + dados["refund"]
 
-# ===== PAINEL VIP =====
-@bot.message_handler(commands=["start"])
-def painel(msg):
-    bot.send_message(msg.chat.id, f"""
-🤖 VIP INSTITUCIONAL
+    await update.message.reply_text(
+        f"📈 RELATÓRIO\n\n"
+        f"🟢 Greens: {dados['green']}\n"
+        f"🔴 Reds: {dados['red']}\n"
+        f"♻️ Reembolso: {dados['refund']}\n\n"
+        f"📊 Total: {total}"
+    )
 
-⚽ GOLS HT / FT
-⛳ ESCANTEIOS HT / FT
+# MAIN
+def main():
+    app = ApplicationBuilder().token(BOT_TOKEN).build()
 
-💰 VIP MENSAL: R$25
-Pix: SUA CHAVE PIX
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("aposta", aposta))
+    app.add_handler(CommandHandler("relatorio", relatorio))
+    app.add_handler(CallbackQueryHandler(resultado))
 
-📊 /relatorio
-""")
+    print("🤖 Bot rodando no Railway")
+    app.run_polling()
 
-# ===== RELATÓRIO =====
-@bot.message_handler(commands=["relatorio"])
-def relatorio(msg):
-    c.execute("SELECT COUNT(*) FROM resultados WHERE tipo='green'")
-    green = c.fetchone()[0]
-    c.execute("SELECT COUNT(*) FROM resultados WHERE tipo='red'")
-    red = c.fetchone()[0]
-    c.execute("SELECT COUNT(*) FROM resultados WHERE tipo='refund'")
-    refund = c.fetchone()[0]
-
-    total = green + red
-    winrate = (green/total*100) if total > 0 else 0
-
-    bot.send_message(msg.chat.id, f"""
-📊 RELATÓRIO VIP
-
-🟢 Green: {green}
-🔴 Red: {red}
-♻️ Reembolso: {refund}
-📈 Winrate: {winrate:.2f}%
-""")
-
-bot.infinity_polling()
+if __name__ == "__main__":
+    main()
